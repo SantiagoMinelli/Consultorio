@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;">
+    <title>GD Consultorios - MedApp</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../fonts/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="../css/sweetalert2.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-clinic-medical"></i> GD Consultorios - Sistema de Gestión</h1>
+            <p style="font-style: italic; font-family: 'Times New Roman', Times, serif;">Consultorios en Movimiento</p>
+        </header>
+
+        <section class="search">
+            <div class="search-header">
+                <h3><i class="fas fa-users"></i> Pacientes</h3>
+            </div>
+            
+            <div class="search-controls">
+                <div class="search-inputs">
+                    <input id="apellido" placeholder="Apellido" />
+                    <input id="nombre" placeholder="Nombre" />
+                    <button id="btnBuscar" class="btn buscar">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+                
+                <div class="action-buttons">
+                    <button id="btnNuevoPaciente" class="btn nuevo">
+                        <i class="fas fa-user-plus"></i> Nuevo Paciente
+                    </button>
+                    <button id="btnExportarExcel" class="btn exportar">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
+                    <button id="btnExportarCSV" class="btn exportar">
+                        <i class="fas fa-file-csv"></i> CSV
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="turnos">
+            <h3><i class="fas fa-calendar-alt"></i> Turnos</h3>
+            <div class="table-container">
+                <table id="tablaTurnos">
+                    <thead>
+                        <tr>
+                            <th>Paciente</th>
+                            <th>DNI</th>
+                            <th>Teléfono</th>
+                            <th>Nro Afiliado</th>
+                            <th>Obra Social</th>
+                            <th><i class="fas fa-ticket-alt"></i> Sesiones</th>
+                            <th><i class="fas fa-cogs"></i> Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Modal para nuevo pedido - MOVIDO ARRIBA DEL MODAL PACIENTE -->
+        <div id="modalPedido" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4><i class="fas fa-prescription"></i> Nuevo Pedido</h4>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label><i class="fas fa-list-ol"></i> Cantidad de sesiones</label>
+                        <select id="selectSesiones">
+                            <option value="5">5 sesiones</option>
+                            <option value="10">10 sesiones</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label><i class="fas fa-stethoscope"></i> Diagnóstico</label>
+                        <!-- CORREGIDO: quitar tilde en el ID -->
+                        <input type="text" id="diagnostico" placeholder="Ingrese el diagnóstico">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelPedido" class="btn cancelar">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button id="confirmPedido" class="btn guardar">
+                        <i class="fas fa-check"></i> Confirmar
+                    </button> 
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Nuevo Paciente -->
+        <div id="modalPaciente" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-user-plus"></i> Nuevo Paciente</h3>
+                    <span class="close">&times;</span>
+                </div>
+                <form id="formPaciente">
+                    <input type="hidden" id="pacienteId" value="">
+                    <div id="formError" class="form-error hidden"></div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="nombrePaciente"><i class="fas fa-signature"></i> Nombre</label>
+                            <input type="text" id="nombrePaciente" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="apellidoPaciente"><i class="fas fa-signature"></i> Apellido</label>
+                            <input type="text" id="apellidoPaciente" required />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="dniPaciente"><i class="fas fa-id-card"></i> DNI</label>
+                            <input type="number" id="dniPaciente" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="telefonoPaciente"><i class="fas fa-phone"></i> Teléfono</label>
+                            <input type="number" id="telefonoPaciente" required />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="nroAfiliadoPaciente"><i class="fas fa-address-card"></i> Nro Afiliado</label>
+                            <input type="number" id="nroAfiliadoPaciente" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="obraSocialPaciente"><i class="fas fa-hospital"></i> Obra Social</label>
+                            <input type="text" id="obraSocialPaciente" required />
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn cancelar">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="submit" class="btn guardar">
+                            <i class="fas fa-save"></i> Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal Sesiones -->
+        <div id="modalSesiones" class="modal">
+            <div class="modal-content large">
+                <div class="modal-header">
+                    <h2 id="tituloModal"><i class="fas fa-history"></i> Sesiones</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Diagnóstico</th>
+                                <th>Observaciones</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaSesionesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/sweetalert2.min.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>
