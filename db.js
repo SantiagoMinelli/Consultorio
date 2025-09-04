@@ -201,13 +201,15 @@ function registrarSesion(pacienteId) {
   
   const fechaActual = new Date().toISOString().split('T')[0];
   
-  // Buscar pedidos activos con sesiones disponibles
+  // Buscar pedidos activos (priorizar gimnasio primero)
   const stmtPedidos = db.prepare(`
     SELECT id, cantidad_sesiones, sesiones_utilizadas 
     FROM pedidos 
     WHERE paciente_id = ? AND activo = 1 
-    AND cantidad_sesiones > sesiones_utilizadas
-    ORDER BY fecha_pedido ASC
+    AND (cantidad_sesiones = -1 OR cantidad_sesiones > sesiones_utilizadas)
+    ORDER BY 
+      CASE WHEN cantidad_sesiones = -1 THEN 0 ELSE 1 END, -- Gimnasio primero
+      fecha_pedido ASC
   `);
   
   const pedidos = stmtPedidos.all(pacienteId);
@@ -221,13 +223,15 @@ function registrarSesion(pacienteId) {
   
   // Iniciar transacción
   const transaction = db.transaction(() => {
-    // Actualizar pedido
-    const stmtUpdate = db.prepare(`
-      UPDATE pedidos 
-      SET sesiones_utilizadas = sesiones_utilizadas + 1 
-      WHERE id = ?
-    `);
-    stmtUpdate.run(pedido.id);
+    // Solo actualizar si NO es gimnasio (cantidad_sesiones != -1)
+    if (pedido.cantidad_sesiones !== -1) {
+      const stmtUpdate = db.prepare(`
+        UPDATE pedidos 
+        SET sesiones_utilizadas = sesiones_utilizadas + 1 
+        WHERE id = ?
+      `);
+      stmtUpdate.run(pedido.id);
+    }
     
     // Registrar sesión realizada
     const stmtSesion = db.prepare(`
@@ -340,13 +344,20 @@ function guardarPedido(pacienteId, cantidad_sesiones, diagnostico) {
 function getSesionesDisponibles(pacienteId) {
   const stmt = db.prepare(`
     SELECT 
-      SUM(cantidad_sesiones - sesiones_utilizadas) as disponibles,
-      GROUP_CONCAT(diagnostico) as diagnosticos
+      SUM(CASE 
+        WHEN cantidad_sesiones = -1 THEN 9999 -- Gimnasio (sin límite)
+        ELSE cantidad_sesiones - sesiones_utilizadas 
+      END) as disponibles,
+      GROUP_CONCAT(diagnostico) as diagnosticos,
+      SUM(CASE 
+        WHEN cantidad_sesiones = -1 THEN 1 -- Indicador de gimnasio
+        ELSE 0 
+      END) as tiene_gimnasio
     FROM pedidos 
     WHERE paciente_id = ? AND activo = 1
   `);
   const result = stmt.get(pacienteId);
-  return result || { disponibles: 0, diagnosticos: '' };
+  return result || { disponibles: 0, diagnosticos: 'Gimnasio', tiene_gimnasio: 0 };
 }
 
 // Función para eliminar paciente
@@ -385,7 +396,6 @@ function exportarDatosExcel() {
     // Hoja de Pacientes
     const worksheetPacientes = workbook.addWorksheet('Pacientes');
     worksheetPacientes.columns = [
-        { header: 'ID', key: 'id', width: 10 },
         { header: 'Apellido', key: 'apellido', width: 20 },
         { header: 'Nombre', key: 'nombre', width: 20 },
         { header: 'DNI', key: 'dni', width: 15 },
@@ -473,18 +483,18 @@ function exportarDatosCSV() {
 
     // Exportar pacientes
     const pacientes = db.prepare('SELECT * FROM pacientes ORDER BY apellido, nombre').all();
-    const pacientesCSV = convertToCSV(pacientes, ['id', 'apellido', 'nombre', 'dni', 'telefono', 'nro_afiliado', 'obra_social']);
+    const pacientesCSV = convertToCSV(pacientes, ['Apellido', 'Nombre', 'DNI', 'Telefono', 'Nro Afiliado', 'Obra Social']);
     fs.writeFileSync(path.join(csvDir, `pacientes_${fecha}.csv`), pacientesCSV);
 
-    // Exportar pedidos
-    const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY fecha_pedido DESC').all();
-    const pedidosCSV = convertToCSV(pedidos, ['id', 'paciente_id', 'fecha_pedido', 'diagnostico', 'cantidad_sesiones', 'sesiones_utilizadas', 'activo']);
-    fs.writeFileSync(path.join(csvDir, `pedidos_${fecha}.csv`), pedidosCSV);
+    // // Exportar pedidos
+    // const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY fecha_pedido DESC').all();
+    // const pedidosCSV = convertToCSV(pedidos, ['id', 'paciente_id', 'fecha_pedido', 'diagnostico', 'cantidad_sesiones', 'sesiones_utilizadas', 'activo']);
+    // fs.writeFileSync(path.join(csvDir, `pedidos_${fecha}.csv`), pedidosCSV);
 
-    // Exportar sesiones
-    const sesiones = db.prepare('SELECT * FROM sesiones_realizadas ORDER BY fecha_sesion DESC').all();
-    const sesionesCSV = convertToCSV(sesiones, ['id', 'pedido_id', 'paciente_id', 'fecha_sesion', 'observaciones']);
-    fs.writeFileSync(path.join(csvDir, `sesiones_${fecha}.csv`), sesionesCSV);
+    // // Exportar sesiones
+    // const sesiones = db.prepare('SELECT * FROM sesiones_realizadas ORDER BY fecha_sesion DESC').all();
+    // const sesionesCSV = convertToCSV(sesiones, ['id', 'pedido_id', 'paciente_id', 'fecha_sesion', 'observaciones']);
+    // fs.writeFileSync(path.join(csvDir, `sesiones_${fecha}.csv`), sesionesCSV);
 
     return { 
         success: true, 
@@ -526,6 +536,24 @@ function getEstadisticas() {
     };
     
     return stats;
+}
+
+function guardarPedido(pacienteId, cantidad_sesiones, diagnostico) {
+  const fechaActual = new Date().toISOString().split('T')[0];
+  
+  // Si es gimnasio, establecer cantidad_sesiones como -1 (sin límite)
+  const cantidadFinal = cantidad_sesiones === 'gimnasio' ? -1 : parseInt(cantidad_sesiones);
+  
+  const stmt = db.prepare(`
+    INSERT INTO pedidos (paciente_id, fecha_pedido, diagnostico, cantidad_sesiones)
+    VALUES (?, ?, ?, ?)
+  `);
+  try {
+    const result = stmt.run(pacienteId, fechaActual, diagnostico, cantidadFinal);
+    return { success: true, id: result.lastInsertRowid };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 module.exports = {

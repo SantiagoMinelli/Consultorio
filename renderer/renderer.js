@@ -293,13 +293,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function confirmarPedido() {
-        // CORRECCIÓN: Verificar explícitamente que pacienteActual no sea null
         if (!pacienteActual || !pacienteActual.id) {
             console.error("Error: pacienteActual es null o no tiene ID", pacienteActual);
             Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'No se ha seleccionado un paciente válido. Por favor, cierre y vuelva a abrir el modal de pedido.'
+            icon: 'error',
+            title: 'Error',
+            text: 'No se ha seleccionado un paciente válido.'
             });
             cerrarModalPedido();
             return;
@@ -308,56 +307,68 @@ document.addEventListener("DOMContentLoaded", () => {
         const tipoSesiones = document.getElementById('selectSesiones').value;
         const diagnostico = document.getElementById('diagnostico').value.trim();
 
-        if (!diagnostico) {
+        // Si es gimnasio, establecer diagnóstico vacío
+        const diagnosticoFinal = tipoSesiones === 'gimnasio' ? 'Gimnasio' : diagnostico;
+
+        if (tipoSesiones !== 'gimnasio' && !diagnosticoFinal) {
             Swal.fire({
-                icon: 'warning',
-                title: 'Campo requerido',
-                text: 'Por favor ingrese el diagnóstico'
+            icon: 'warning',
+            title: 'Campo requerido',
+            text: 'Por favor ingrese el diagnóstico'
             });
             return;
         }
 
         try {
             const result = await window.electronAPI.guardarPedido({
-                pacienteId: pacienteActual.id,
-                tipoSesiones: tipoSesiones,
-                diagnostico: diagnostico
+            pacienteId: pacienteActual.id,
+            tipoSesiones: tipoSesiones,
+            diagnostico: diagnosticoFinal
             });
 
             if (result.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Éxito',
-                    text: `Pedido guardado para ${pacienteActual.apellido}, ${pacienteActual.nombre}`
-                });
-                
-                // Guardar referencia local antes de limpiar pacienteActual
-                const pacienteTemp = {...pacienteActual};
-                cerrarModalPedido();
-                
-                // MODIFICACIÓN: En lugar de cargar todos los pacientes, buscar solo este paciente
-                limpiarCamposBusqueda();
-                const pacientes = await window.electronAPI.getPacientes(pacienteTemp.apellido, pacienteTemp.nombre);
-                mostrarPacientesEnTabla(pacientes);
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: `Pedido ${tipoSesiones === 'gimnasio' ? 'de Gimnasio' : ''} guardado para ${pacienteActual.apellido}, ${pacienteActual.nombre}`
+            });
+            
+            const pacienteTemp = {...pacienteActual};
+            cerrarModalPedido();
+            
+            limpiarCamposBusqueda();
+            const pacientes = await window.electronAPI.getPacientes(pacienteTemp.apellido, pacienteTemp.nombre);
+            mostrarPacientesEnTabla(pacientes);
             } else {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: result.error
-                });
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: result.error
+            });
             }
         } catch (error) {
             console.error("Error al guardar pedido:", error);
             Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: 'Error al guardar pedido'
+            icon: 'error',
+            title: 'Error',
+            text: 'Error al guardar pedido'
             });
         } finally {
-            // Asegurarse de que pacienteActual se limpie incluso si hay error
             pacienteActual = null;
         }
     }
+
+    // Mostrar/ocultar campo diagnóstico según selección
+    document.getElementById('selectSesiones')?.addEventListener('change', function() {
+    const diagnosticoGroup = document.querySelector('.form-group:has(#diagnostico)');
+    if (this.value === 'gimnasio') {
+        diagnosticoGroup.style.display = 'none';
+        document.getElementById('diagnostico').value = 'Gimnasio';
+    } else {
+        diagnosticoGroup.style.display = 'block';
+        document.getElementById('diagnostico').value = 'Gimnasio';
+    }
+    });
     
     // ============================
     // MODAL SESIONES
@@ -383,16 +394,23 @@ document.addEventListener("DOMContentLoaded", () => {
             // Pedidos activos
             if (pedidos && pedidos.length > 0) {
                 pedidos.forEach(pedido => {
+                    // MODIFICACIÓN: Mostrar texto descriptivo para gimnasio
+                    let textoPedido;
+                    if (pedido.cantidad_sesiones === -1) {
+                        textoPedido = `Gimnasio - Sesiones ilimitadas`;
+                    } else {
+                        textoPedido = `${pedido.diagnostico || 'Sin diagnóstico'} (${pedido.cantidad_sesiones - pedido.sesiones_utilizadas}/${pedido.cantidad_sesiones} sesiones disponibles)`;
+                    }
+
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td colspan="4" style="background: #f8f9fa; font-weight: bold;">
                             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                                 <div>
-                                    <i class="fas fa-file-medical"></i> Pedido del ${pedido.fecha_pedido}: ${pedido.diagnostico || 'Sin diagnóstico'} 
-                                    (${pedido.cantidad_sesiones - pedido.sesiones_utilizadas}/${pedido.cantidad_sesiones} sesiones disponibles)
+                                    <i class="fas fa-file-medical"></i> Pedido del ${pedido.fecha_pedido}: ${textoPedido}
                                 </div>
                                 <button class="btn-eliminar-pedido" title="Eliminar pedido" data-pedido-id="${pedido.id}">
-                                    <i class="fas fa-trash"></i> Eliminar Pedido
+                                    <i class="fas fa-trash"></i>
                                 </button>
                             </div>
                         </td>
@@ -410,8 +428,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         <td>${sesion.diagnostico || '-'}</td>
                         <td>${sesion.observaciones || '-'}</td>
                         <td>
-                            <button class="btn-eliminar-sesion" data-sesion-id="${sesion.id}">
-                                <i class="fas fa-trash"></i> Eliminar
+                            <button class="btn-eliminar-sesion" title="Eliminar sesión" data-sesion-id="${sesion.id}">
+                                <i class="fas fa-trash"></i>
                             </button>
                         </td>
                     `;
@@ -423,23 +441,26 @@ document.addEventListener("DOMContentLoaded", () => {
                 tablaBody.appendChild(row);
             }
 
-            // Agregar event listeners a los botones de eliminar
-            setTimeout(() => {
-                document.querySelectorAll('.btn-eliminar-sesion').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const sesionId = e.target.getAttribute('data-sesion-id');
+            // CORRECCIÓN: Usar event delegation para manejar los clics en los botones de eliminar
+            tablaBody.addEventListener('click', (e) => {
+                // Manejar clics en botones de eliminar sesión
+                if (e.target.closest('.btn-eliminar-sesion')) {
+                    const button = e.target.closest('.btn-eliminar-sesion');
+                    const sesionId = button.getAttribute('data-sesion-id');
+                    if (sesionId) {
                         eliminarSesion(sesionId);
-                    });
-                });
+                    }
+                }
                 
-                // Agregar event listeners a los botones de eliminar pedido
-                document.querySelectorAll('.btn-eliminar-pedido').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const pedidoId = e.target.getAttribute('data-pedido-id');
+                // Manejar clics en botones de eliminar pedido
+                if (e.target.closest('.btn-eliminar-pedido')) {
+                    const button = e.target.closest('.btn-eliminar-pedido');
+                    const pedidoId = button.getAttribute('data-pedido-id');
+                    if (pedidoId) {
                         eliminarPedido(pedidoId);
-                    });
-                });
-            }, 100);
+                    }
+                }
+            });
 
             document.getElementById('modalSesiones').classList.add('show');
         } catch (error) {
@@ -460,8 +481,8 @@ document.addEventListener("DOMContentLoaded", () => {
             showCancelButton: true,
             confirmButtonText: 'Sí, eliminar',
             cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6'
+            confirmButtonColor: '#4CAF50',
+            cancelButtonColor: '#d63030ff'
         });
 
         if (confirmar) {
@@ -507,8 +528,8 @@ document.addEventListener("DOMContentLoaded", () => {
             showCancelButton: true,
             confirmButtonText: 'Sí, eliminar',
             cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6'
+            confirmButtonColor: '#4CAF50',
+            cancelButtonColor: '#d63030ff'
         });
 
         if (confirmar) {
@@ -565,44 +586,49 @@ document.addEventListener("DOMContentLoaded", () => {
         for (const paciente of pacientes) {
             const sesionesDisponibles = await window.electronAPI.getSesionesDisponibles(paciente.id);
             const disponibles = sesionesDisponibles.disponibles || 0;
+            const tieneGimnasio = sesionesDisponibles.tiene_gimnasio > 0;
             
             // Verificar si ya se registró una sesión hoy
             const yaRegistroHoy = await window.electronAPI.yaRegistroSesionHoy(paciente.id);
             
             // Determinar si el botón debe estar deshabilitado
-            const botonDeshabilitado = yaRegistroHoy || disponibles <= 0;
+            // Para gimnasio, siempre habilitado (a menos que ya haya sesión hoy)
+            const botonDeshabilitado = yaRegistroHoy || (!tieneGimnasio && disponibles <= 0);
             const tituloBoton = yaRegistroHoy ? 
-                'Ya se registró una sesión hoy' : 
-                (disponibles <= 0 ? 'No hay sesiones disponibles' : 'Registrar sesión');
-            const iconoBoton = botonDeshabilitado ? '⏸️' : '✅';
+            'Ya se registró una sesión hoy' : 
+            (tieneGimnasio ? 'Gimnasio - Sesión ilimitada' : (disponibles <= 0 ? 'No hay sesiones disponibles' : 'Registrar sesión'));
+            const iconoBoton = botonDeshabilitado ? 'X' : (tieneGimnasio ? '✅' : '✅');
+            
+            // Texto para mostrar sesiones
+            const textoSessiones = tieneGimnasio ? 'Gimnasio (∞)' : `${disponibles} sesiones`;
 
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${paciente.apellido}, ${paciente.nombre}</td>
-                <td>${paciente.dni || '-'}</td>
-                <td>${paciente.telefono || '-'}</td>
-                <td>${paciente.nro_afiliado || '-'}</td>
-                <td>${paciente.obra_social || '-'}</td>
-                <td>
-                    <button class="btn-action btn-fecha" title="${tituloBoton}" ${botonDeshabilitado ? 'disabled' : ''}>
-                        ${iconoBoton}
-                    </button>
-                    <span class="sesiones-info">${disponibles} sesiones</span>
-                </td>
-                <td>
-                    <button class="btn-action btn-pedido" title="Nuevo pedido">
-                        ➕
-                    </button>
-                    <button class="btn-action btn-sesiones" title="Ver sesiones">
-                        🔍
-                    </button>
-                    <button class="btn-action btn-editar" title="Editar paciente">
-                        ✏️
-                    </button>
-                    <button class="btn-action btn-eliminar" title="Eliminar paciente">
-                        ❌
-                    </button>
-                </td>
+            <td>${paciente.apellido}, ${paciente.nombre}</td>
+            <td>${paciente.dni || '-'}</td>
+            <td>${paciente.telefono || '-'}</td>
+            <td>${paciente.nro_afiliado || '-'}</td>
+            <td>${paciente.obra_social || '-'}</td>
+            <td>
+                <button class="btn-action btn-fecha" title="${tituloBoton}" ${botonDeshabilitado ? 'disabled' : ''}>
+                ${iconoBoton}
+                </button>
+                <span class="sesiones-info">${textoSessiones}</span>
+            </td>
+            <td>
+                <button class="btn-action btn-pedido" title="Nuevo pedido">
+                ➕
+                </button>
+                <button class="btn-action btn-sesiones" title="Ver sesiones">
+                🔍
+                </button>
+                <button class="btn-action btn-editar" title="Editar paciente">
+                ✏️
+                </button>
+                <button class="btn-action btn-eliminar" title="Eliminar paciente">
+                ❌
+                </button>
+            </td>
             `;
 
             // Event listeners para los botones
@@ -614,7 +640,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Solo agregar event listener si el botón no está deshabilitado
             if (!botonDeshabilitado) {
-                btnFecha.addEventListener('click', () => registrarSesion(paciente, disponibles));
+                btnFecha.addEventListener('click', () => registrarSesion(paciente, disponibles, tieneGimnasio));
             }
             
             btnPedido.addEventListener('click', () => abrirModalPedido(paciente));
@@ -626,7 +652,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    async function registrarSesion(paciente, disponibles) {
+    async function registrarSesion(paciente, disponibles, tieneGimnasio) {
         if (disponibles <= 0) {
             Swal.fire({
                 icon: 'warning',
@@ -641,15 +667,24 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const { value: confirmar } = await Swal.fire({
+        // MODIFICACIÓN: No mostrar footer para gimnasio
+        const swalOptions = {
             title: 'Confirmar sesión',
             text: `¿Registrar sesión para ${paciente.apellido}, ${paciente.nombre}? `,
-            footer: `(Sesiones disponibles: ${disponibles})`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'Sí, registrar',
-            cancelButtonText: 'Cancelar'
-        });
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#4CAF50',
+            cancelButtonColor: '#d63030ff'
+        };
+
+        // Solo agregar footer si NO es gimnasio
+        if (!tieneGimnasio) {
+            swalOptions.footer = `(Sesiones disponibles: ${disponibles})`;
+        }
+
+        const { value: confirmar } = await Swal.fire(swalOptions);
 
         if (confirmar) {
             try {
@@ -664,7 +699,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     mostrarPacientesEnTabla(pacientes);
                 } else {
                     if (result.error.includes('hoy')) {
-                        mostrarPacientesEnTabla(paciente);
+                        mostrarPacientesEnTabla([paciente]);
                     }
                     Swal.fire({
                         icon: 'error',
@@ -691,8 +726,8 @@ document.addEventListener("DOMContentLoaded", () => {
             showCancelButton: true,
             confirmButtonText: 'Sí, eliminar',
             cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6'
+            confirmButtonColor: '#4CAF50',
+            cancelButtonColor: '#d63030ff'
         });
 
         if (confirmar) {

@@ -504,7 +504,6 @@ table tr:last-child td {
 }
 
 .swal2-cancel {
-    background-color: #6c757d !important;
     border: none;
     border-radius: 4px;
     padding: 10px 20px;
@@ -557,20 +556,21 @@ table tr:last-child td {
 
 /* Botón eliminar pedido */
 .btn-eliminar-pedido {
-  background: var(--accent-red) !important;
-  color: white !important;
+  background: var(--accent-red);
+  color: white;
   border: none;
   padding: 8px 15px;
-
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.3s;
   font-weight: 600;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   font-size: 14px;
-  margin-right: 32px;
+  min-height: 36px;
+  margin-right: 70px;
   white-space: nowrap;
 }
 
