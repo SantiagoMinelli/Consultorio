@@ -37,6 +37,16 @@ document.addEventListener("DOMContentLoaded", () => {
         
         // Modal sesiones
         document.querySelector('#modalSesiones .close')?.addEventListener('click', cerrarModalSesiones);
+    
+        // Modal notas
+        document.querySelector('#modalNotas .close')?.addEventListener('click', cerrarModalNotas);
+        document.getElementById('btnCancelarNotas')?.addEventListener('click', cerrarModalNotas);
+        document.getElementById('btnAgregarNota')?.addEventListener('click', abrirModalNuevaNota);
+        
+        // Modal nueva nota
+        document.querySelector('#modalNuevaNota .close')?.addEventListener('click', cerrarModalNuevaNota);
+        document.getElementById('cancelarNuevaNota')?.addEventListener('click', cerrarModalNuevaNota);
+        document.getElementById('guardarNuevaNota')?.addEventListener('click', guardarNuevaNota);
     }
 
     // ============================
@@ -308,7 +318,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const diagnostico = document.getElementById('diagnostico').value.trim();
 
         // Si es gimnasio, establecer diagnóstico vacío
-        const diagnosticoFinal = tipoSesiones === 'gimnasio' ? 'Gimnasio' : diagnostico;
+        const diagnosticoFinal = tipoSesiones === 'gimnasio' ? ' ' : diagnostico;
 
         if (tipoSesiones !== 'gimnasio' && !diagnosticoFinal) {
             Swal.fire({
@@ -363,10 +373,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const diagnosticoGroup = document.querySelector('.form-group:has(#diagnostico)');
     if (this.value === 'gimnasio') {
         diagnosticoGroup.style.display = 'none';
-        document.getElementById('diagnostico').value = 'Gimnasio';
+        document.getElementById('diagnostico').value = '';
     } else {
         diagnosticoGroup.style.display = 'block';
-        document.getElementById('diagnostico').value = 'Gimnasio';
+        document.getElementById('diagnostico').value = '';
     }
     });
     
@@ -568,6 +578,166 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ============================
+    // MODAL NOTAS
+    // ============================
+    async function abrirModalNotas(paciente) {
+        try {
+            pacienteActual = paciente;
+            const notas = await window.electronAPI.getNotas(paciente.id);
+
+            document.getElementById('tituloModalNotas').textContent = 
+                `Notas - ${paciente.apellido}, ${paciente.nombre}`;
+
+            const tablaBody = document.getElementById('tablaNotasBody');
+            tablaBody.innerHTML = '';
+
+            if (notas && notas.length > 0) {
+                notas.forEach(nota => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><i class="fas fa-calendar-day"></i> ${nota.fecha_creacion}</td>
+                        <td>${nota.descripcion || '-'}</td>
+                        <td>
+                            <button class="btn-eliminar-nota" title="Eliminar nota" data-nota-id="${nota.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    tablaBody.appendChild(row);
+                });
+            } else {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="3" style="text-align: center;">No hay notas registradas</td>';
+                tablaBody.appendChild(row);
+            }
+
+            // Event delegation para eliminar notas
+            tablaBody.addEventListener('click', (e) => {
+                if (e.target.closest('.btn-eliminar-nota')) {
+                    const button = e.target.closest('.btn-eliminar-nota');
+                    const notaId = button.getAttribute('data-nota-id');
+                    if (notaId) {
+                        eliminarNota(notaId);
+                    }
+                }
+            });
+
+            document.getElementById('modalNotas').classList.add('show');
+        } catch (error) {
+            console.error("Error al cargar notas:", error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Error al cargar notas'
+            });
+        }
+    }
+
+    function cerrarModalNotas() {
+        document.getElementById('modalNotas').classList.remove('show');
+        pacienteActual = null;
+    }
+
+    function abrirModalNuevaNota() {
+        document.getElementById('descripcionNota').value = '';
+        document.getElementById('modalNuevaNota').classList.add('show');
+    }
+
+    function cerrarModalNuevaNota() {
+        document.getElementById('modalNuevaNota').classList.remove('show');
+    }
+
+    async function guardarNuevaNota() {
+        const descripcion = document.getElementById('descripcionNota').value.trim();
+        
+        if (!descripcion) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Campo requerido',
+                text: 'Por favor ingrese una descripción para la nota'
+            });
+            return;
+        }
+
+        try {
+            const result = await window.electronAPI.guardarNota({
+                pacienteId: pacienteActual.id,
+                descripcion: descripcion
+            });
+
+            if (result.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Nota guardada',
+                    text: 'La nota fue guardada correctamente'
+                });
+                
+                cerrarModalNuevaNota();
+                
+                // Recargar el modal de notas para reflejar los cambios
+                await abrirModalNotas(pacienteActual);
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: result.error
+                });
+            }
+        } catch (error) {
+            console.error("Error al guardar nota:", error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Error al guardar nota'
+            });
+        }
+    }
+
+    async function eliminarNota(notaId) {
+        const { value: confirmar } = await Swal.fire({
+            title: '¿Está seguro?',
+            text: '¿Eliminar esta nota? Esta acción no se puede deshacer.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#4CAF50',
+            cancelButtonColor: '#d63030ff'
+        });
+
+        if (confirmar) {
+            try {
+                const result = await window.electronAPI.eliminarNota(notaId);
+                if (result.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Nota eliminada',
+                        text: 'La nota fue eliminada correctamente'
+                    });
+                    
+                    // Recargar el modal para reflejar los cambios
+                    if (pacienteActual) {
+                        await abrirModalNotas(pacienteActual);
+                    }
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: result.error
+                    });
+                }
+            } catch (error) {
+                console.error("Error al eliminar nota:", error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Error al eliminar nota'
+                });
+            }
+        }
+    }
+
+    // ============================
     // FUNCIÓN PRINCIPAL DE TABLA
     // ============================
     async function mostrarPacientesEnTabla(pacientes) {
@@ -592,7 +762,6 @@ document.addEventListener("DOMContentLoaded", () => {
             const yaRegistroHoy = await window.electronAPI.yaRegistroSesionHoy(paciente.id);
             
             // Determinar si el botón debe estar deshabilitado
-            // Para gimnasio, siempre habilitado (a menos que ya haya sesión hoy)
             const botonDeshabilitado = yaRegistroHoy || (!tieneGimnasio && disponibles <= 0);
             const tituloBoton = yaRegistroHoy ? 
             'Ya se registró una sesión hoy' : 
@@ -600,7 +769,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const iconoBoton = botonDeshabilitado ? 'X' : (tieneGimnasio ? '✅' : '✅');
             
             // Texto para mostrar sesiones
-            const textoSessiones = tieneGimnasio ? 'Gimnasio (∞)' : `${disponibles} sesiones`;
+            const textoSessiones = tieneGimnasio ? 'Gimnasio' : `${disponibles} sesiones`;
 
             const row = document.createElement('tr');
             row.innerHTML = `
@@ -614,6 +783,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${iconoBoton}
                 </button>
                 <span class="sesiones-info">${textoSessiones}</span>
+            </td>
+            <td>
+                <button class="btn-action btn-notas" title="Ver notas">
+                📝
+                </button>
             </td>
             <td>
                 <button class="btn-action btn-pedido" title="Nuevo pedido">
@@ -637,6 +811,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const btnSesiones = row.querySelector('.btn-sesiones');
             const btnEditar = row.querySelector('.btn-editar');
             const btnEliminar = row.querySelector('.btn-eliminar');
+            const btnNotas = row.querySelector('.btn-notas');
 
             // Solo agregar event listener si el botón no está deshabilitado
             if (!botonDeshabilitado) {
@@ -647,6 +822,7 @@ document.addEventListener("DOMContentLoaded", () => {
             btnSesiones.addEventListener('click', () => abrirModalSesiones(paciente));
             btnEditar.addEventListener('click', () => abrirModalEditarPaciente(paciente));
             btnEliminar.addEventListener('click', () => eliminarPaciente(paciente));
+            btnNotas.addEventListener('click', () => abrirModalNotas(paciente));
 
             tablaBody.appendChild(row);
         }

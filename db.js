@@ -50,6 +50,17 @@ CREATE TABLE IF NOT EXISTS sesiones_realizadas (
 )
 `).run();
 
+// Crear tabla notas
+db.prepare(`
+CREATE TABLE IF NOT EXISTS notas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  paciente_id INTEGER NOT NULL,
+  descripcion TEXT NOT NULL,
+  fecha_creacion TEXT NOT NULL,
+  FOREIGN KEY(paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE
+)
+`).run();
+
 // Función para verificar si paciente ya existe (excluyendo el actual en edición)
 function pacienteExiste(dni, nroAfiliado, excludeId = null) {
   let query = `
@@ -328,12 +339,16 @@ function eliminarPedido(pedidoId) {
 // Función para guardar nuevo pedido
 function guardarPedido(pacienteId, cantidad_sesiones, diagnostico) {
   const fechaActual = new Date().toISOString().split('T')[0];
+  
+  // Si es gimnasio, establecer cantidad_sesiones como -1 (sin límite)
+  const cantidadFinal = cantidad_sesiones === 'gimnasio' ? -1 : parseInt(cantidad_sesiones);
+  
   const stmt = db.prepare(`
     INSERT INTO pedidos (paciente_id, fecha_pedido, diagnostico, cantidad_sesiones)
     VALUES (?, ?, ?, ?)
   `);
   try {
-    const result = stmt.run(pacienteId, fechaActual, diagnostico, cantidad_sesiones);
+    const result = stmt.run(pacienteId, fechaActual, diagnostico, cantidadFinal);
     return { success: true, id: result.lastInsertRowid };
   } catch (error) {
     return { success: false, error: error.message };
@@ -407,45 +422,6 @@ function exportarDatosExcel() {
     const pacientes = db.prepare('SELECT * FROM pacientes ORDER BY apellido, nombre').all();
     worksheetPacientes.addRows(pacientes);
 
-    // Hoja de Pedidos
-    const worksheetPedidos = workbook.addWorksheet('Pedidos');
-    worksheetPedidos.columns = [
-        { header: 'ID', key: 'id', width: 10 },
-        { header: 'Paciente ID', key: 'paciente_id', width: 10 },
-        { header: 'Fecha Pedido', key: 'fecha_pedido', width: 15 },
-        { header: 'Diagnóstico', key: 'diagnostico', width: 30 },
-        { header: 'Cantidad Sesiones', key: 'cantidad_sesiones', width: 15 },
-        { header: 'Sesiones Utilizadas', key: 'sesiones_utilizadas', width: 15 },
-        { header: 'Activo', key: 'activo', width: 10 }
-    ];
-
-    const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY fecha_pedido DESC').all();
-    worksheetPedidos.addRows(pedidos);
-
-    // Hoja de Sesiones Realizadas
-    const worksheetSesiones = workbook.addWorksheet('Sesiones Realizadas');
-    worksheetSesiones.columns = [
-        { header: 'ID', key: 'id', width: 10 },
-        { header: 'Pedido ID', key: 'pedido_id', width: 10 },
-        { header: 'Paciente ID', key: 'paciente_id', width: 10 },
-        { header: 'Fecha Sesión', key: 'fecha_sesion', width: 15 },
-        { header: 'Observaciones', key: 'observaciones', width: 30 }
-    ];
-
-    const sesiones = db.prepare('SELECT * FROM sesiones_realizadas ORDER BY fecha_sesion DESC').all();
-    worksheetSesiones.addRows(sesiones);
-
-    // Hoja de Resumen
-    const worksheetResumen = workbook.addWorksheet('Resumen');
-    worksheetResumen.columns = [
-        { header: 'Paciente', key: 'paciente', width: 30 },
-        { header: 'DNI', key: 'dni', width: 15 },
-        { header: 'Total Sesiones Pedidas', key: 'total_pedidas', width: 20 },
-        { header: 'Total Sesiones Utilizadas', key: 'total_utilizadas', width: 20 },
-        { header: 'Sesiones Disponibles', key: 'disponibles', width: 20 },
-        { header: 'Última Sesión', key: 'ultima_sesion', width: 15 }
-    ];
-
     const resumen = db.prepare(`
         SELECT 
             p.apellido || ', ' || p.nombre as paciente,
@@ -485,16 +461,6 @@ function exportarDatosCSV() {
     const pacientes = db.prepare('SELECT * FROM pacientes ORDER BY apellido, nombre').all();
     const pacientesCSV = convertToCSV(pacientes, ['Apellido', 'Nombre', 'DNI', 'Telefono', 'Nro Afiliado', 'Obra Social']);
     fs.writeFileSync(path.join(csvDir, `pacientes_${fecha}.csv`), pacientesCSV);
-
-    // // Exportar pedidos
-    // const pedidos = db.prepare('SELECT * FROM pedidos ORDER BY fecha_pedido DESC').all();
-    // const pedidosCSV = convertToCSV(pedidos, ['id', 'paciente_id', 'fecha_pedido', 'diagnostico', 'cantidad_sesiones', 'sesiones_utilizadas', 'activo']);
-    // fs.writeFileSync(path.join(csvDir, `pedidos_${fecha}.csv`), pedidosCSV);
-
-    // // Exportar sesiones
-    // const sesiones = db.prepare('SELECT * FROM sesiones_realizadas ORDER BY fecha_sesion DESC').all();
-    // const sesionesCSV = convertToCSV(sesiones, ['id', 'pedido_id', 'paciente_id', 'fecha_sesion', 'observaciones']);
-    // fs.writeFileSync(path.join(csvDir, `sesiones_${fecha}.csv`), sesionesCSV);
 
     return { 
         success: true, 
@@ -538,19 +504,39 @@ function getEstadisticas() {
     return stats;
 }
 
-function guardarPedido(pacienteId, cantidad_sesiones, diagnostico) {
-  const fechaActual = new Date().toISOString().split('T')[0];
-  
-  // Si es gimnasio, establecer cantidad_sesiones como -1 (sin límite)
-  const cantidadFinal = cantidad_sesiones === 'gimnasio' ? -1 : parseInt(cantidad_sesiones);
-  
+// Función para obtener notas por paciente
+function getNotasByPaciente(pacienteId) {
   const stmt = db.prepare(`
-    INSERT INTO pedidos (paciente_id, fecha_pedido, diagnostico, cantidad_sesiones)
-    VALUES (?, ?, ?, ?)
+    SELECT * FROM notas 
+    WHERE paciente_id = ?
+    ORDER BY fecha_creacion DESC
   `);
+  return stmt.all(pacienteId);
+}
+
+// Función para guardar nueva nota
+function guardarNota(notaData) {
+  const fechaActual = new Date().toISOString().split('T')[0];
+  const stmt = db.prepare(`
+    INSERT INTO notas (paciente_id, descripcion, fecha_creacion)
+    VALUES (?, ?, ?)
+  `);
+  
   try {
-    const result = stmt.run(pacienteId, fechaActual, diagnostico, cantidadFinal);
+    const result = stmt.run(notaData.pacienteId, notaData.descripcion, fechaActual);
     return { success: true, id: result.lastInsertRowid };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Función para eliminar nota
+function eliminarNota(notaId) {
+  const stmt = db.prepare(`DELETE FROM notas WHERE id = ?`);
+  
+  try {
+    const result = stmt.run(notaId);
+    return { success: true, changes: result.changes };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -572,5 +558,8 @@ module.exports = {
     exportarDatosExcel,
     exportarDatosCSV,
     yaRegistroSesionHoy,
-    getEstadisticas
+    getEstadisticas,
+    getNotasByPaciente,
+    guardarNota,
+    eliminarNota
 };

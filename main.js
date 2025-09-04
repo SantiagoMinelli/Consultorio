@@ -118,3 +118,16 @@ ipcMain.handle("open-folder", (event, folderPath) => {
 ipcMain.handle("ya-registro-sesion-hoy", (event, pacienteId) => {
     return db.yaRegistroSesionHoy(pacienteId);
 });
+
+// Nuevos handlers para notas
+ipcMain.handle("get-notas", (event, pacienteId) => {
+    return db.getNotasByPaciente(pacienteId);
+});
+
+ipcMain.handle("guardar-nota", (event, notaData) => {
+    return db.guardarNota(notaData);
+});
+
+ipcMain.handle("eliminar-nota", (event, notaId) => {
+    return db.eliminarNota(notaId);
+});
